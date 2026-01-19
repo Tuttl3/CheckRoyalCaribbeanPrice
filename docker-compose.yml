@@ -11,7 +11,7 @@ services:
       # Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
       - TZ=America/Toronto
       # Cron schedule format: minute hour day month weekday
-      # This runs at exactly 7:00 AM and 7:00 PM every day
+      # This runs at exactly 7:00 AM, 12:00 PM, and 7:00 PM every day
       - CRON_SCHEDULE=0 7,12,19 * * *
       - PYTHONUNBUFFERED=1
     volumes:
