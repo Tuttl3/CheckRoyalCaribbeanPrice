@@ -1,3 +1,5 @@
-Apprise
-bs4
-pyinstaller
+requests
+pyyaml
+beautifulsoup4
+apprise
+python-dotenv

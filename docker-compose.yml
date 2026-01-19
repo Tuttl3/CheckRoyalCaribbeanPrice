@@ -3,16 +3,20 @@ services:
     build: .
     container_name: cruise-price-checker
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      # Timezone for cron execution (default: UTC)
+      # Timezone for cron execution
       # Examples: America/New_York, America/Chicago, America/Los_Angeles, Europe/London
       # Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-      - TZ=UTC
+      - TZ=America/Toronto
       # Cron schedule format: minute hour day month weekday
-      # Default: 7 AM and 7 PM daily (in the timezone specified above)
-      - CRON_SCHEDULE=0 7,19 * * *
+      # This runs at exactly 7:00 AM and 7:00 PM every day
+      - CRON_SCHEDULE=0 7,12,19 * * *
+      - PYTHONUNBUFFERED=1
     volumes:
-      # Mount your config file (create config.yaml in this directory)
+      # Mount your config file as Read Only (:ro) for security
+      - ./CheckRoyalCaribbeanPrice.py:/app/CheckRoyalCaribbeanPrice.py
       - ./config.yaml:/app/config.yaml:ro
     logging:
       driver: "json-file"
