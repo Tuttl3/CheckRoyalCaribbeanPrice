@@ -1,28 +1,24 @@
 FROM python:3.12-alpine
 
-# Install timezone data
+# Install timezone data (Keep this!)
 RUN apk add --no-cache tzdata
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# IMPORTANT: Ensure python-dotenv is in your requirements.txt
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
-COPY CheckRoyalCaribbeanPrice.py .
-COPY entrypoint.sh .
+COPY . .
 
 # Make entrypoint executable
 RUN chmod +x entrypoint.sh
 
-# Create directory for cron logs
-RUN mkdir -p /var/log
-
 # Set default environment variables
-ENV CRON_SCHEDULE="0 7,19 * * *"
-ENV TZ="UTC"
+# Set this to your local TZ so the logs match your watch
+ENV TZ="America/Toronto"
 
 # Use our entrypoint script
 ENTRYPOINT ["./entrypoint.sh"]

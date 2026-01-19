@@ -54,24 +54,18 @@ def main():
     env_user = os.getenv("RC_USERNAME")
     env_pass = os.getenv("RC_PASSWORD")
     po_user = os.getenv("PUSHOVER_USER")
-    po_token_deal = os.getenv("PUSHOVER_TOKEN_DEAL")
-    po_token_heartbeat = os.getenv("PUSHOVER_TOKEN_HEARTBEAT")
+    po_token = os.getenv("PUSHOVER_TOKEN")
 
-    apobj_deal = Apprise()
-    apobj_heartbeat = Apprise()
+    apobj = Apprise()
 
     if not env_user or not env_pass:
         print(f"{RED}ERROR: RC_USERNAME or RC_PASSWORD not found in .env!{RESET}")
         return
 
     # Configure Notifications
-    # Create two Apprise objects for different notification priorities.
-    # apobj_deal is for high-priority deal alerts.
-    # apobj_heartbeat is for low-priority heartbeat notifications.
-    if po_user and po_token_deal:
-        apobj_deal.add(f"pover://{po_user}@{po_token_deal}")
-    if po_user and po_token_heartbeat:
-        apobj_heartbeat.add(f"pover://{po_user}@{po_token_heartbeat}/?priority=-2")
+    if po_user and po_token:
+        print(f"{YELLOW}--- Pushover Credentials Loaded ---{RESET}")
+        apobj.add(f"pover://{po_user}@{po_token}")
 
     with open(args.config, "r") as file:
         data = yaml.safe_load(file)
@@ -100,7 +94,7 @@ def main():
                 # A. Cruise Fare Check
                 if "cruiseURL" in cruise:
                     get_cruise_price(
-                        cruise["cruiseURL"], float(cruise.get("paidPrice", 9999)), apobj_deal
+                        cruise["cruiseURL"], float(cruise.get("paidPrice", 9999)), apobj
                     )
 
                 # B. Purchased Items
@@ -109,7 +103,7 @@ def main():
                     auth_data["token"],
                     auth_data["accId"],
                     auth_data["sess"],
-                    apobj_deal,
+                    apobj,
                     "royalcaribbean",
                     data.get("reservationFriendlyNames", {}),
                     gather_ids_only=False,
@@ -136,7 +130,7 @@ def main():
                             float(item["targetPrice"]),
                             "CAD",
                             item["productID"],
-                            apobj_deal,
+                            apobj,
                             passId,
                             item["name"],
                             "Manual",
@@ -152,7 +146,7 @@ def main():
     report_body += (
         "\n".join(summary_results) if summary_results else "No items tracked."
     )
-    apobj_heartbeat.notify(body=report_body, title="RC Tracker Heartbeat")
+    apobj.notify(body=report_body, title="RC Tracker Heartbeat", priority=-2)
     print(f"{YELLOW}--- Script Finished ---{RESET}")
 
 
@@ -186,7 +180,7 @@ def getNewBeveragePrice(
     paidPrice,
     currency,
     product,
-    apobj_deal,
+    apobj,
     passengerId,
     passengerName,
     room,
@@ -217,14 +211,14 @@ def getNewBeveragePrice(
             price_payload.get("adultPromotionalPrice")
             or price_payload.get("adultShipboardPrice")
         )
+        summary_results.append(f"• {title}: ${current:.2f}")
         label = "Goal" if is_manual else "Paid"
-        summary_results.append(f"• {title}: ${current:.2f} ({label}: ${paidPrice:.2f})")
         output_color = GREEN
         if current < paidPrice:
             output_color = RED
             msg = f"REBOOK! {title} is ${current:.2f} ({label}: ${paidPrice:.2f})"
             print(f"{RED}{msg}{RESET}")
-            apobj_deal.notify(body=msg, title="Price Alert")
+            apobj.notify(body=msg, title="Price Alert", priority=1)
         else:
             if is_manual:
                 if current <= (paidPrice * 1.05):
@@ -254,7 +248,7 @@ def getVoyages(
     access_token,
     accountId,
     session,
-    apobj_deal,
+    apobj,
     cruiseLineName,
     reservationFriendlyNames,
     gather_ids_only=False,
@@ -281,7 +275,7 @@ def getVoyages(
             ship,
             sail,
             booking.get("numberOfNights"),
-            apobj_deal,
+            apobj,
             gather_ids_only,
         )
 
@@ -295,7 +289,7 @@ def getOrders(
     ship,
     startDate,
     numberOfNights,
-    apobj_deal,
+    apobj,
     gather_ids_only=False,
 ):
     headers = {
@@ -339,8 +333,6 @@ def getOrders(
                         )
                     else:
                         paid = guest.get("priceDetails").get("subtotal")
-                        # For items sold per day, we need to divide the total price
-                        # by the number of nights to get the per-day price.
                         if item.get("productSummary").get("salesUnit") in [
                             "PER_NIGHT",
                             "PER_DAY",
@@ -362,7 +354,7 @@ def getOrders(
                             paid,
                             currency,
                             product,
-                            apobj_deal,
+                            apobj,
                             guest.get("id"),
                             guest.get("firstName"),
                             guest.get("stateroomNumber"),
@@ -373,7 +365,7 @@ def getOrders(
                         )
 
 
-def get_cruise_price(url, paidPrice, apobj_deal):
+def get_cruise_price(url, paidPrice, apobj):
     global summary_results
     headers = {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -389,40 +381,34 @@ def get_cruise_price(url, paidPrice, apobj_deal):
             params=params,
             headers=headers,
         )
+        print(f"Cruise Price Check Status Code: {response.status_code}")
+        with open("cruise_price_page.html", "w") as f:
+            f.write(response.text)
         soup = BeautifulSoup(response.text, "html.parser")
-
-        # Handle client-side redirect. The website may return a page with a
-        # meta refresh tag, which we need to follow to get the real content.
-        redirect_tag = soup.find("meta", attrs={"http-equiv": "refresh"})
-        if redirect_tag:
-            redirect_url = redirect_tag['content'].split('url=')[1]
-            response = requests.get(
-                f"https://www.royalcaribbean.com{redirect_url}",
-                headers=headers,
-            )
-            soup = BeautifulSoup(response.text, "html.parser")
-
+        print(f"Cruise Price Check Page Title: {soup.title.string if soup.title else 'No Title Found'}")
         soupFind = (
             soup.find("span", attrs={"data-testid": "pricing-total"})
             or soup.find("span", class_=re.compile("SummaryPrice_title"))
             or soup.find(string=re.compile(r"\$\d+,\d+\.\d+"))
         )
+        print(f"Cruise Price Check soupFind: {soupFind}")
         if soupFind:
             price_str = re.sub(
                 r"[^\d.]", "", soupFind.string if soupFind.string else soupFind.text
             )
             current = float(price_str)
-            summary_results.append(f"• {shipName} Cabin: ${current:.2f} (Paid: ${paidPrice:.2f})")
+            summary_results.append(f"• {shipName} Cabin: ${current:.2f}")
             if current < paidPrice:
                 msg = f"REBOOK! {shipName} Cabin is ${current:.2f} (Paid: ${paidPrice:.2f})"
                 print(f"{RED}{msg}{RESET}")
-                apobj_deal.notify(body=msg, title="Cruise Price Alert")
+                apobj.notify(body=msg, title="Cruise Price Alert", priority=1)
             else:
                 print(
                     f"{GREEN}{shipName} Cabin is ${current:.2f}{RESET} (Paid: ${paidPrice:.2f})"
                 )
-    except:
-        pass
+    except Exception as e:
+        print(f"An error occurred in get_cruise_price: {e}")
+
 
 def getShipDictionary():
 
